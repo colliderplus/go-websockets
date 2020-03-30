@@ -1,4 +1,4 @@
-package middleware
+package websockets
 
 import (
 	"collider/utils"

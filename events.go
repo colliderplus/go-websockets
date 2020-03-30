@@ -1,4 +1,4 @@
-package middleware
+package websockets
 
 import (
 	"github.com/google/uuid"
