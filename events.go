@@ -2,22 +2,30 @@ package websockets
 
 import (
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"log"
 	"sync"
 	"time"
-	"log"
-	"github.com/gorilla/websocket"
 )
+
+const (
+	pongWait   = time.Second * 30
+	writeWait  = 10 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+)
+
+type WsClientArray []*WsConnection
 
 type WsClientsPool struct {
 	clients *sync.Map
-	mux sync.Mutex
+	mux     sync.Mutex
 }
 
 func NewPool() *WsClientsPool {
-	return &WsClientsPool{clients: &sync.Map{}, mux:sync.Mutex{}}
+	return &WsClientsPool{clients: &sync.Map{}, mux: sync.Mutex{}}
 }
 
-func (p *WsClientsPool)Append(client *WsConnection, id string) {
+func (p *WsClientsPool) Append(client *WsConnection, id string) {
 	if client == nil {
 		return
 	}
@@ -34,8 +42,7 @@ func (p *WsClientsPool)Append(client *WsConnection, id string) {
 	p.mux.Unlock()
 }
 
-
-func (p *WsClientsPool)Send(clientId string, event interface{}) {
+func (p *WsClientsPool) Send(clientId string, event interface{}) {
 	arr, ok := p.clients.Load(clientId)
 	if ok {
 		ar := arr.(WsClientArray)
@@ -43,23 +50,21 @@ func (p *WsClientsPool)Send(clientId string, event interface{}) {
 	}
 }
 
-
-func (p *WsClientsPool)sendClients(event interface{}, array WsClientArray) {
-	for _,cl := range array {
+func (p *WsClientsPool) sendClients(event interface{}, clients WsClientArray) {
+	for _, cl := range clients {
 		cl.events <- event
 	}
 }
 
-func (p *WsClientsPool)Broadcast(event interface{}) {
+func (p *WsClientsPool) Broadcast(event interface{}) {
 	p.clients.Range(func(key, value interface{}) bool {
 		ar := value.(WsClientArray)
-		p.sendClients(event,ar)
-		return  true
+		p.sendClients(event, ar)
+		return true
 	})
 }
 
-
-func (p *WsClientsPool)Delete(id string) {
+func (p *WsClientsPool) Delete(id string) {
 	arr, ok := p.clients.Load(id)
 	if ok {
 		p.mux.Lock()
@@ -75,15 +80,12 @@ func (p *WsClientsPool)Delete(id string) {
 	}
 }
 
-
-type WsClientArray []*WsConnection
-
 type WsConnection struct {
-	conn *websocket.Conn
+	conn   *websocket.Conn
 	events chan interface{}
-	Done chan bool
-	pool *WsClientsPool
-	id string
+	Done   chan bool
+	pool   *WsClientsPool
+	id     string
 }
 
 func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
@@ -96,8 +98,8 @@ func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
 
 	connection.conn.SetReadDeadline(time.Now().Add(pongWait))
 	connection.conn.SetPongHandler(func(string) error { conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-	go func () {
-		for  {
+	go func() {
+		for {
 			_, _, err := connection.conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -113,7 +115,7 @@ func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
 		}
 	}()
 
-	go func () {
+	go func() {
 		for {
 			select {
 			case <-ticker.C:
@@ -121,23 +123,16 @@ func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
 				if err := connection.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					break
 				}
-			case event := <- connection.events:
+			case event := <-connection.events:
 				connection.conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := connection.conn.WriteJSON(event); err != nil {
 					break
 				}
-			case <- finish:
-				go func() {connection.Done <- true}()
+			case <-finish:
+				go func() { connection.Done <- true }()
 				break
 			}
 		}
 	}()
 	return connection
 }
-
-const (
-	pongWait = time.Second *30
-	writeWait = 10 * time.Second
-	pingPeriod = (pongWait * 9) / 10
-)
-
