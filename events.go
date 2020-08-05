@@ -25,6 +25,12 @@ func NewPool() *WsClientsPool {
 	return &WsClientsPool{clients: &sync.Map{}, mux: sync.Mutex{}}
 }
 
+func NewPoolWithClients(clientsId string, clients *WsClientArray) *WsClientsPool {
+	pool := &WsClientsPool{clients: &sync.Map{}, mux: sync.Mutex{}}
+	pool.clients.Store(clientsId, clients)
+	return pool
+}
+
 func (p *WsClientsPool) Append(client *WsConnection, id string) {
 	if client == nil {
 		return
@@ -42,11 +48,19 @@ func (p *WsClientsPool) Append(client *WsConnection, id string) {
 	p.mux.Unlock()
 }
 
-func (p *WsClientsPool) Send(clientId string, event interface{}) {
-	arr, ok := p.clients.Load(clientId)
+func (p *WsClientsPool)GetConnectionsByID(id string) *WsClientArray {
+	arr, ok := p.clients.Load(id)
 	if ok {
-		ar := arr.(WsClientArray)
-		p.sendClients(event, ar)
+		a := arr.(WsClientArray)
+		return &a
+	}
+	return nil
+}
+
+func (p *WsClientsPool) Send(clientId string, event interface{}) {
+	c := p.GetConnectionsByID(clientId)
+	if c != nil {
+		p.sendClients(event, *c)
 	}
 }
 
@@ -79,20 +93,30 @@ func (p *WsClientsPool) Delete(id string) {
 		p.clients.Store(id, newCl)
 	}
 }
+type MessageType int
+const (
+	MessageTypeText = websocket.TextMessage
+	MessageTypeData = websocket.BinaryMessage
+)
+type Message struct {
+	MessageType MessageType
+	Data []byte
+}
 
 type WsConnection struct {
 	conn   *websocket.Conn
 	events chan interface{}
+	MessagesChannel chan Message
 	Done   chan bool
 	pool   *WsClientsPool
 	id     string
 }
 
-func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
+func NewWsConnection(conn *websocket.Conn, id string, messages chan Message, pool *WsClientsPool) *WsConnection {
 	events := make(chan interface{})
 	done := make(chan bool, 1)
 	connectionId := uuid.New().String()
-	connection := &WsConnection{conn: conn, events: events, Done: done, pool: nil, id: connectionId}
+	connection := &WsConnection{conn: conn, events: events, MessagesChannel: messages, Done: done, pool: nil, id: connectionId}
 	ticker := time.NewTicker(pingPeriod)
 	finish := make(chan bool, 1)
 
@@ -100,7 +124,7 @@ func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
 	connection.conn.SetPongHandler(func(string) error { conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	go func() {
 		for {
-			_, _, err := connection.conn.ReadMessage()
+			types, data, err := connection.conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Printf("error: %v", err)
@@ -111,6 +135,9 @@ func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
 				}
 				finish <- true
 				break
+			}
+			if types == websocket.BinaryMessage || types == websocket.TextMessage {
+				messages <- Message{MessageType: MessageType(types), Data: data}
 			}
 		}
 	}()
@@ -134,5 +161,6 @@ func NewWsConnection(conn *websocket.Conn, id string) *WsConnection {
 			}
 		}
 	}()
+	pool.Append(connection, id)
 	return connection
 }

@@ -33,17 +33,25 @@ func ConnectionUpgrade() gin.HandlerFunc {
 			return
 		}
 		pool := GetWSPoolContext(c)
+		messagesChannel := make(chan Message)
 		connectionId := GetConnectionIDFromContext(c)
-		connection := NewWsConnection(conn, connectionId)
-		pool.Append(connection, connectionId)
+		connection := NewWsConnection(conn, connectionId, messagesChannel, pool)
 		c.Next()
-		<-connection.Done
+		for {
+			select {
+			case message := <-messagesChannel:
+				print(message)
+			case <-connection.Done:
+				break
+			}
+		}
 	}
 }
 
 func GetConnectionIDFromContext(c *gin.Context) string {
 	return c.MustGet(string(ContextConstConnectionID)).(string)
 }
+
 func SetConnectionIDFromContext(id string, c *gin.Context) {
 	c.Set(string(ContextConstConnectionID), id)
 }
