@@ -4,6 +4,7 @@ import (
 	"collider/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"log"
 	"net/http"
 	"time"
 )
@@ -40,7 +41,7 @@ func ConnectionUpgrade() gin.HandlerFunc {
 		for {
 			select {
 			case message := <-messagesChannel:
-				print(message)
+				log.Println(message)
 			case <-connection.Done:
 				break
 			}
