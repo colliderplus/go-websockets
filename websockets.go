@@ -1,8 +1,11 @@
 package websockets
 
 import (
-	"collider/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+	"log"
+	"net/http"
+	"time"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
@@ -30,7 +33,7 @@ func ConnectionUpgrade() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		conn, err := wsupgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil || conn == nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, utils.DefaultResponseError(nil))
+			c.AbortWithStatusJSON(http.StatusBadRequest, nil)
 			return
 		}
 		pool := GetWSPoolContext(c)
