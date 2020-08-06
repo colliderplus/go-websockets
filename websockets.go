@@ -3,13 +3,10 @@ package websockets
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"log"
 	"net/http"
 	"time"
 	"github.com/gorilla/websocket"
 	"log"
-	"net/http"
-	"time"
 )
 
 type WSContextConst string
