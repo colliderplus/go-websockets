@@ -106,13 +106,13 @@ type Message struct {
 type WsConnection struct {
 	conn   *websocket.Conn
 	events chan interface{}
-	MessagesChannel chan Message
+	MessagesChannel *chan Message
 	Done   chan bool
 	pool   *WsClientsPool
 	id     string
 }
 
-func NewWsConnection(conn *websocket.Conn, id string, messages chan Message, pool *WsClientsPool) *WsConnection {
+func NewWsConnection(conn *websocket.Conn, id string, messages *chan Message, pool *WsClientsPool) *WsConnection {
 	events := make(chan interface{})
 	done := make(chan bool, 1)
 	connectionId := uuid.New().String()
@@ -137,7 +137,7 @@ func NewWsConnection(conn *websocket.Conn, id string, messages chan Message, poo
 				break
 			}
 			if types == websocket.BinaryMessage || types == websocket.TextMessage {
-				messages <- Message{MessageType: MessageType(types), Data: data}
+				*messages <- Message{MessageType: MessageType(types), Data: data}
 			}
 		}
 	}()

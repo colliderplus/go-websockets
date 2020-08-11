@@ -5,7 +5,6 @@ import (
 	"github.com/gorilla/websocket"
 	"net/http"
 	"time"
-	"log"
 )
 
 type WSContextConst string
@@ -13,6 +12,7 @@ type WSContextConst string
 const (
 	ContextConstWSPool       WSContextConst = "ContextConstWSPool"
 	ContextConstConnectionID WSContextConst = "ContextConstConnectionID"
+	ContextIncomingMessage WSContextConst = "ContextIncomingMessage"
 )
 
 var wsupgrader = websocket.Upgrader{
@@ -33,16 +33,18 @@ func ConnectionUpgrade() gin.HandlerFunc {
 			return
 		}
 		pool := GetWSPoolContext(c)
-		messagesChannel := make(chan Message)
-		connectionId := GetConnectionIDFromContext(c)
-		connection := NewWsConnection(conn, connectionId, messagesChannel, pool)
-		c.Next()
-		for {
-			select {
-			case message := <-messagesChannel:
-				log.Println(message)
-			case <-connection.Done:
-				break
+		if  pool  !=  nil {
+			messagesChannel := make(chan Message)
+			connectionId := GetConnectionIDFromContext(c)
+			connection := NewWsConnection(conn, connectionId, &messagesChannel, pool)
+			c.Next()
+			for {
+				select {
+				case message := <-messagesChannel:
+					setIncomingMessageFromContext(message,c)
+				case <-connection.Done:
+					break
+				}
 			}
 		}
 	}
@@ -54,6 +56,14 @@ func GetConnectionIDFromContext(c *gin.Context) string {
 
 func SetConnectionIDFromContext(id string, c *gin.Context) {
 	c.Set(string(ContextConstConnectionID), id)
+}
+
+func GetIncomingMessageFromContext(c *gin.Context) Message {
+	return c.MustGet(string(ContextIncomingMessage)).(Message)
+}
+
+func setIncomingMessageFromContext(message Message, c *gin.Context) {
+	c.Set(string(ContextIncomingMessage), message)
 }
 
 func SocketsEventMiddleware(pool *WsClientsPool) gin.HandlerFunc {
